@@ -1,0 +1,321 @@
+module Main where
+
+import Test.HUnit hiding (cases)
+import Test.QuickCheck
+import Test.Framework
+import Test.Framework.Providers.HUnit
+import Test.Framework.Providers.QuickCheck2 (testProperty)
+
+import qualified Data.Map as M
+import qualified Data.Char as C
+
+import Lecture3.Golf (skips, localMaxima, histogram)
+import Lecture4.Exercise (fun1', fun2', fun1, fun2, foldTree, isBalanced, xor, myFoldl, sieveSundaram)
+import qualified Lecture5.ExprT as ExprT
+import Lecture5.Parser (parseExp)
+import Lecture5.Calc (eval, evalStr, Expr(..), MinMax(..), Mod7(..), VarExprT(..), HasVars(..))
+import Lecture6.Fibonacci (streamToList, streamRepeat, nats, fibs2, fibs3)
+import Lecture7.Sized (Size(..))
+import Lecture7.JoinList (JoinList(..), indexJ, jlToList, (!!?), dropJ, takeJ, (+++))
+import Lecture7.Scrabble (Score(..), scoreLine)
+import Lecture8.Party (maxFun)
+import Lecture8.Employee (testCompany, testCompany2)
+import Lecture10.AParser (abParser, abParser_, Parser(..), intPair, intOrUppercase)
+import qualified Lecture11.AParser as AParser
+import Lecture11.SExpr (zeroOrMore, oneOrMore, ident, parseSExpr, Atom(..), SExpr(..))
+import Lecture8.HW08 (stringFitsFormat)
+import Lecture9.HW09 (integerRingProp, boolRingProp, mod5RingProp, mat2x2RingProp)
+
+-- lecture 3
+skipsTest :: Assertion
+skipsTest = ["ABCD", "BD", "C", "D"] @=? skips "ABCD"
+
+localMaximaTest :: Assertion
+localMaximaTest = [9, 6] @=? localMaxima [2, 9, 5, 6, 1]
+
+histogramTest :: Assertion
+histogramTest = "   * *    \n==========\n0123456789\n" @=? histogram [3,5]
+
+-- lecture 4
+fun1Test :: Assertion
+fun1Test = ((6 - 2) * (4 - 2) * 1) @=? fun1' [6,5,4,3]
+
+fun2Test :: Assertion
+fun2Test = (10 + 16 + 8 + 4 + 2) @=? fun2' 10
+
+foldlTest :: Assertion
+foldlTest = foldl (flip (:)) [] [1.. 10] @=? myFoldl (flip (:)) [] [1..10]
+
+fun1Prop :: [Integer] -> Bool
+fun1Prop is = (fun1' is) == (fun1 is)
+
+-- need to figure out how to limit the input
+fun2Prop :: Integer -> Bool
+fun2Prop i = (fun2' i) == (fun2 i)
+
+treeProp :: String -> Bool
+treeProp = isBalanced . foldTree
+
+xorProp :: [Bool] -> Bool
+xorProp xs = xor xs == (odd . length . filter id $ xs)
+
+-- lecture 5
+evalTest :: Assertion
+evalTest = eval (ExprT.Mul (ExprT.Add (ExprT.Lit 2) (ExprT.Lit 3)) (ExprT.Lit 4)) @=? 20
+
+evalStrTest1 :: Assertion
+evalStrTest1 = evalStr "(2+3)*4" @=? Just 20
+
+evalStrTest2 :: Assertion
+evalStrTest2 = evalStr "2+3*4" @=? Just 14
+
+evalStrTest3 :: Assertion
+evalStrTest3 = evalStr "2+3*" @=? Nothing
+
+testExp :: Expr a => Maybe a
+testExp = parseExp lit add mul "(3 * -4) + 5"
+
+testInteger :: Assertion
+testInteger = (testExp :: Maybe Integer) @=? Just (3 * (-4) + 5)
+
+testBool :: Assertion
+testBool = (testExp :: Maybe Bool) @=? Just ((True || False) && True)
+
+testMM :: Assertion
+testMM = (testExp :: Maybe MinMax) @=? Just (MinMax (( 3 `min` (-4) ) `max` 5))
+
+testSat :: Assertion
+testSat = (testExp :: Maybe Mod7) @=? Just (Mod7 ( (((3 `rem` 7) * (4 `rem` 7)) `rem` 7 + (5 `rem` 7)) `rem` 7 ))
+
+withVars :: [(String, Integer)]
+         -> (M.Map String Integer -> Maybe Integer)
+         -> Maybe Integer
+withVars vs exp = exp $ M.fromList vs
+
+testWithVars1 :: Assertion
+testWithVars1 = (withVars [("x", 6)] $ add (lit 3) (var "x")) @=? Just 9
+
+testWithVars2 :: Assertion
+testWithVars2 = (withVars [("x", 6)] $ add (lit 3) (var "y")) @=? Nothing
+
+testWithVars3 :: Assertion
+testWithVars3 = (withVars [("x", 6), ("y", 3)] $ mul (var "x") (add (var "y") (var "x"))) @=? Just 54
+
+-- lecture 6
+streamRepeatProp :: Positive Int -> Bool
+streamRepeatProp (Positive n) = (take n . streamToList $ streamRepeat 1) == (take n $ repeat 1)
+
+natsProp :: Positive Int -> Bool
+natsProp (Positive n) = (take n $ streamToList nats) == (take n $ iterate (+1) 0)
+
+fibs3Prop :: Positive Int -> Bool
+fibs3Prop (Positive n) = (take n fibs2) == (take n . streamToList $ fibs3)
+
+-- lecture 7
+joinListSample :: JoinList Size Char
+joinListSample =
+  Append
+    (Size 4)
+    (Append
+      (Size 3)
+      (Single (Size 1) 'y')
+      (Append (Size 2) (Single (Size 1) 'e') (Single (Size 1) 'a')))
+    (Single (Size 1) 'h')
+
+indexJProp :: Int -> Bool
+indexJProp n = (indexJ n joinListSample) == (jlToList joinListSample !!? n)
+
+dropJProp :: Int -> Bool
+dropJProp n = (jlToList (dropJ n joinListSample)) == drop n (jlToList joinListSample)
+
+takeJProp :: Int -> Bool
+takeJProp n = (jlToList (takeJ n joinListSample)) == take n (jlToList joinListSample)
+
+scoreLineTest :: Assertion
+scoreLineTest = scoreLine "yay " +++ scoreLine "haskell!"  @=? Append (Score 23) (Single (Score 9) "yay ") (Single (Score 14) "haskell!")
+
+-- Lecture 8
+testCompanyTest :: Assertion
+testCompanyTest = assertBool "maxFun list cannot be empty" (not (maxFun testCompany == mempty ))
+
+-- Lecture 10
+abParserTest :: Assertion
+abParserTest = runParser abParser "abcdef" @=? Just (('a', 'b'), "cdef")
+
+abParserTest2 :: Assertion
+abParserTest2 = runParser abParser "aedcbf" @=? Nothing
+
+abParser_Test :: Assertion
+abParser_Test = runParser abParser_ "abcdef" @=? Just ((), "cdef")
+
+abParser_Test2 :: Assertion
+abParser_Test2 = runParser abParser_ "aedcbf" @=? Nothing
+
+intPairTest :: Assertion
+intPairTest = runParser intPair "12 34" @=? Just ([12, 34], "")
+
+intOrUppercaseTest :: Assertion
+intOrUppercaseTest = runParser intOrUppercase "342abcd" @=? Just ((), "abcd")
+
+intOrUppercaseTest2 :: Assertion
+intOrUppercaseTest2 = runParser intOrUppercase "XYZ" @=? Just ((), "YZ")
+
+intOrUppercaseTest3 :: Assertion
+intOrUppercaseTest3 = runParser intOrUppercase "foo" @=? Nothing
+
+-- Lecture 11
+zeroOrMoreTest :: Assertion
+zeroOrMoreTest = AParser.runParser (zeroOrMore (AParser.satisfy C.isUpper)) "abcdeFGh" @=? Just ("", "abcdeFGh")
+
+oneOrMoreTest :: Assertion
+oneOrMoreTest = AParser.runParser (oneOrMore (AParser.satisfy C.isUpper)) "abcdeFGh" @=? Nothing
+
+identTest :: Assertion
+identTest = AParser.runParser ident "foobar baz" @=? Just ("foobar", " baz")
+
+identTest2 :: Assertion
+identTest2 = AParser.runParser ident "foo33fA" @=? Just ("foo33fA", "")
+
+identTest3 :: Assertion
+identTest3 = AParser.runParser ident "2bad" @=? Nothing
+
+identTest4 :: Assertion
+identTest4 = AParser.runParser ident "" @=? Nothing
+
+parseSExprTest :: Assertion
+parseSExprTest = AParser.runParser parseSExpr "5" @=? Just (A . N $ 5, "")
+
+parseSExprTest2 :: Assertion
+parseSExprTest2 = AParser.runParser parseSExpr "foo3" @=? Just (A . I $ "foo3", "")
+
+parseSExprTest3 :: Assertion
+parseSExprTest3 =
+  let s = Comb [A . I $ "lots", A . I $ "of", Comb [A . I $ "spaces", A . I $ "in"], A . I $ "this", Comb [A . I $ "one"]]
+  in  AParser.runParser parseSExpr "( lots of ( spaces in ) this ( one ) )" @=? Just (s, "")
+
+parseSExprTest4 :: Assertion
+parseSExprTest4 =
+  let s = Comb [Comb [Comb [A . I $ "lambda", A . I $ "x", Comb [A . I $ "lambda", A . I $ "y", Comb [A . I $ "plus", A . I $ "x", A . I $ "y"]]], A . N $ 3], A . N $ 5]
+  in  AParser.runParser parseSExpr "(((lambda x (lambda y (plus x y))) 3) 5)" @=? Just (s, "")
+
+-- Lecture 8
+stringFitsFormatTest :: Assertion
+stringFitsFormatTest = stringFitsFormat "3aaa2aa" @=? True
+
+stringFitsFormatTest2 :: Assertion
+stringFitsFormatTest2 = stringFitsFormat "9aaaaaaaaa" @=? True
+
+stringFitsFormatTest3 :: Assertion
+stringFitsFormatTest3 = stringFitsFormat "0" @=? True
+
+stringFitsFormatTest4 :: Assertion
+stringFitsFormatTest4 = stringFitsFormat "001a" @=? True
+
+stringFitsFormatTest5 :: Assertion
+stringFitsFormatTest5 = stringFitsFormat "2aa2aa" @=? True
+
+stringFitsFormatTest6 :: Assertion
+stringFitsFormatTest6 = stringFitsFormat "3aaa2a" @=? False
+
+stringFitsFormatTest7 :: Assertion
+stringFitsFormatTest7 = stringFitsFormat "10aaaaaaaaaa" @=? False
+
+stringFitsFormatTest8 :: Assertion
+stringFitsFormatTest8 = stringFitsFormat "1" @=? False
+
+stringFitsFormatTest9 :: Assertion
+stringFitsFormatTest9 = stringFitsFormat "100a" @=? False
+
+stringFitsFormatTest10 :: Assertion
+stringFitsFormatTest10 = stringFitsFormat "2bb2bb" @=? False
+
+-- testCases
+cases =
+  testGroup "cases"
+    [ testCase "skips" skipsTest
+    , testCase "localMaxima" localMaximaTest
+    , testCase "histogram" histogramTest
+    , testCase "fun1'" fun1Test
+    , testCase "fun2'" fun2Test
+    , testCase "myFoldl" foldlTest
+    , testCase "eval" evalTest
+    , testGroup "evalStr"
+      [ testCase "1" evalStrTest1
+      , testCase "2" evalStrTest2
+      , testCase "3" evalStrTest3
+      ]
+    , testGroup "testExp"
+      [ testCase "Integer" testInteger
+      , testCase "Bool" testBool
+      , testCase "MinMax" testMM
+      , testCase "Mod7" testSat
+      ]
+    , testGroup "withVar"
+      [ testCase "1" testWithVars1
+      , testCase "2" testWithVars2
+      , testCase "3" testWithVars3
+      ]
+    , testCase "scoreLine" scoreLineTest
+    , testCase "testCompanyTest" testCompanyTest
+    , testGroup "abParser"
+      [ testCase "1" abParserTest
+      , testCase "2" abParserTest2
+      ]
+    , testGroup "abParser_"
+      [ testCase "1" abParser_Test
+      , testCase "2" abParser_Test
+      ]
+    , testCase "intPair" intPairTest
+    , testGroup "intOrUppercase"
+      [ testCase "1" intOrUppercaseTest
+      , testCase "2" intOrUppercaseTest2
+      , testCase "3" intOrUppercaseTest3
+      ]
+    , testCase "zeroOrMoreTest" zeroOrMoreTest
+    , testCase "oneOrMoreTest" oneOrMoreTest
+    , testGroup "identTest"
+      [ testCase "1" identTest
+      , testCase "2" identTest2
+      , testCase "3" identTest3
+      , testCase "4" identTest4
+      ]
+    , testGroup "parseSExprTest"
+      [ testCase "1" parseSExprTest
+      , testCase "2" parseSExprTest2
+      , testCase "3" parseSExprTest3
+      , testCase "4" parseSExprTest4
+      ]
+    , testGroup "stringFitsFormatTest"
+      [ testCase "1" stringFitsFormatTest
+      , testCase "2" stringFitsFormatTest2
+      , testCase "3" stringFitsFormatTest3
+      , testCase "4" stringFitsFormatTest4
+      , testCase "5" stringFitsFormatTest5
+      , testCase "6" stringFitsFormatTest6
+      , testCase "7" stringFitsFormatTest7
+      , testCase "8" stringFitsFormatTest8
+      , testCase "9" stringFitsFormatTest9
+      , testCase "10" stringFitsFormatTest10
+      ]
+    ]
+
+props =
+  testGroup "props"
+    [ testProperty "fun1" fun1Prop
+    --, testProperty "fun2" fun2Prop
+    , testProperty "tree" treeProp
+    , testProperty "xor"  xorProp
+    , testProperty "streamRepeat" streamRepeatProp
+    , testProperty "nats" natsProp
+    , testProperty "fibs3" fibs3Prop
+    , testProperty "indexJ" indexJProp
+    , testProperty "dropJ" dropJProp
+    , testProperty "takeJ" takeJProp
+    , testProperty "integerRing" integerRingProp
+    , testProperty "boolRing" boolRingProp
+    --, testProperty "mod5Ring" mod5RingProp -- quickcheck falsifies this one
+    , testProperty "mat2x2Ring" mat2x2RingProp
+    ]
+
+main :: IO ()
+main = defaultMain [ cases, props ]
